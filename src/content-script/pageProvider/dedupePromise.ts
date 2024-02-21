@@ -1,30 +1,31 @@
 import { ethErrors } from 'eth-rpc-errors';
 
 class DedupePromise {
-  private _blackList: string[];
+  private _blackList: Set<string>;
   private _tasks: Record<string, number> = {};
 
-  constructor(blackList) {
-    this._blackList = blackList;
+  constructor(blackList: string[]) {
+    this._blackList = new Set(blackList);
   }
 
   async call(key: string, defer: () => Promise<any>) {
-    if (this._blackList.includes(key) && this._tasks[key]) {
-      throw ethErrors.rpc.transactionRejected('there is a pending request, please request after it resolved');
+    if (this._blackList.has(key) && this._tasks[key]) {
+      throw ethErrors.rpc.transactionRejected(`There is a pending request with key '${key}', please request after it is resolved.`);
     }
 
-    return new Promise((resolve) => {
-      this._tasks[key] = (this._tasks[key] || 0) + 1;
+    if (!this._tasks[key]) {
+      this._tasks[key] = 0;
+    }
+    this._tasks[key]++;
 
-      resolve(
-        defer().finally(() => {
-          this._tasks[key]--;
-          if (!this._tasks[key]) {
-            delete this._tasks[key];
-          }
-        })
-      );
-    });
+    try {
+      return await defer();
+    } finally {
+      this._tasks[key]--;
+      if (!this._tasks[key]) {
+        delete this._tasks[key];
+      }
+    }
   }
 }
 
